@@ -20,22 +20,31 @@ PROFILE_DIR = Path(__file__).with_name("browser-profile")
 YTM_URL = "https://music.youtube.com"
 LOGIN_COOKIE = "__Secure-3PAPISID"
 LOGIN_TIMEOUT = 300  # sekunder
+EPISODES_TO_TRY = 4  # hur många avsnitt bakåt vi letar efter en låtlista
 
 
 def fetch_digilistan():
-    """Returnerar (avsnittstitel, [(artist, titel), ...]) med etta först."""
+    """Returnerar (avsnittstitel, [(artist, titel), ...]) med etta först.
+
+    Tar senaste avsnittet som har en låtlista, eftersom listan för ett nyss
+    sänt avsnitt inte alltid är publicerad än."""
     episodes = requests.get(
         f"{SR_API}/episodes/index",
-        params={"programid": SR_PROGRAM_ID, "format": "json", "size": 1},
+        params={"programid": SR_PROGRAM_ID, "format": "json", "size": EPISODES_TO_TRY},
         timeout=30,
     ).json()["episodes"]
-    episode = episodes[0]
 
-    songs = requests.get(
-        f"{SR_API}/playlists/getplaylistbyepisodeid",
-        params={"id": episode["id"], "format": "json"},
-        timeout=30,
-    ).json().get("song", [])
+    for episode in episodes:
+        songs = requests.get(
+            f"{SR_API}/playlists/getplaylistbyepisodeid",
+            params={"id": episode["id"], "format": "json"},
+            timeout=30,
+        ).json().get("song", [])
+        if songs:
+            break
+        print(f"Ingen låtlista för '{episode['title']}' än, provar föregående avsnitt.")
+    else:
+        sys.exit("Hittade ingen låtlista hos Sveriges Radio, spellistan lämnas orörd.")
 
     # Listan räknas ner i sändning, så den senast spelade låten är etta.
     songs.sort(key=lambda s: s["starttimeutc"], reverse=True)
@@ -158,6 +167,9 @@ def main():
         else:
             missing.append(f"{artist} - {title}")
 
+    if not video_ids:
+        sys.exit("Inga låtar hittades på YouTube Music, spellistan lämnas orörd.")
+
     description = f"{episode_title} (Sveriges Radio P3)"
     playlist_id = get_or_create_playlist(yt, description)
 
@@ -169,8 +181,7 @@ def main():
         current = []
     if current:
         yt.remove_playlist_items(playlist_id, current)
-    if video_ids:
-        yt.add_playlist_items(playlist_id, video_ids, duplicates=True)
+    yt.add_playlist_items(playlist_id, video_ids, duplicates=True)
     yt.edit_playlist(playlist_id, description=description)
 
     print(f"\nLade till {len(video_ids)} låtar i '{PLAYLIST_NAME}'.")
