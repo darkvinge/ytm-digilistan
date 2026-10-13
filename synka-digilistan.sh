@@ -10,6 +10,8 @@
 #   --alla        synka både Digilistan och Svensktoppen
 #   --dry-run     visa låtar och sökträffar utan att ändra spellistan
 #   -i, --valj    välj själv bland sökträffarna för låtar under 100 % matchning
+#                 (valen sparas och används automatiskt nästa gång)
+#   --glom-val    glöm alla sparade val
 
 set -euo pipefail
 

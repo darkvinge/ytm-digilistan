@@ -4,6 +4,7 @@ lägger låtarna i varsin spellista på YouTube Music."""
 
 import argparse
 import html
+import json
 import re
 import sys
 import time
@@ -16,6 +17,7 @@ import requests
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 from ytmusicapi import YTMusic
+from ytmusicapi.exceptions import YTMusicServerError
 
 SR_API = "https://api.sr.se/api/v2"
 # Listorna vi kan synka. Spellistan på YouTube Music får samma namn som listan.
@@ -25,6 +27,7 @@ CHARTS = {
     "svensktoppen": {"name": "Svensktoppen", "program_id": 2023, "bubblers": 3},
 }
 PROFILE_DIR = Path(__file__).with_name("browser-profile")
+CHOICES_FILE = Path(__file__).with_name("val.json")
 YTM_URL = "https://music.youtube.com"
 LOGIN_COOKIE = "__Secure-3PAPISID"
 LOGIN_TIMEOUT = 300  # sekunder
@@ -36,6 +39,20 @@ MONTHS = ["januari", "februari", "mars", "april", "maj", "juni", "juli",
           "augusti", "september", "oktober", "november", "december"]
 
 
+class NetworkError(Exception):
+    """En tjänst gick inte att nå."""
+
+
+def sr_get(path, **params):
+    try:
+        response = requests.get(f"{SR_API}/{path}", params={**params, "format": "json"},
+                                timeout=30)
+        response.raise_for_status()
+        return response.json()
+    except (requests.RequestException, ValueError) as e:
+        raise NetworkError("Kunde inte hämta listan från Sveriges Radio.") from e
+
+
 def fetch_chart(chart):
     """Returnerar (sändningsdatum, [(artist, titel), ...]) med etta först, eller
     None om ingen låtlista finns.
@@ -43,18 +60,11 @@ def fetch_chart(chart):
     Tar senaste avsnittet som har en låtlista, eftersom listan för ett nyss
     sänt avsnitt inte alltid är publicerad än. Flödet innehåller också
     webbinslag utan låtlista, som hoppas över på samma sätt."""
-    episodes = requests.get(
-        f"{SR_API}/episodes/index",
-        params={"programid": chart["program_id"], "format": "json", "size": EPISODES_TO_TRY},
-        timeout=30,
-    ).json()["episodes"]
+    episodes = sr_get("episodes/index", programid=chart["program_id"],
+                      size=EPISODES_TO_TRY).get("episodes", [])
 
     for episode in episodes:
-        songs = requests.get(
-            f"{SR_API}/playlists/getplaylistbyepisodeid",
-            params={"id": episode["id"], "format": "json"},
-            timeout=30,
-        ).json().get("song", [])
+        songs = sr_get("playlists/getplaylistbyepisodeid", id=episode["id"]).get("song", [])
         if songs:
             break
         print(f"Ingen låtlista för '{episode['title']}', provar föregående avsnitt.")
@@ -74,11 +84,7 @@ def fetch_chart(chart):
 
     if chart["bubblers"]:
         # Avsnittslistan saknar avsnittstexten, så den hämtas separat.
-        text = requests.get(
-            f"{SR_API}/episodes/get",
-            params={"id": episode["id"], "format": "json"},
-            timeout=30,
-        ).json()["episode"].get("text")
+        text = sr_get("episodes/get", id=episode["id"]).get("episode", {}).get("text")
         bubblers = find_bubblers(text, tracks, chart["bubblers"])
         if bubblers:
             print("Hoppar över veckans bubblare: "
@@ -128,7 +134,11 @@ def read_cookies(headless, stale=None):
             args=["--disable-blink-features=AutomationControlled"],
         )
         page = context.pages[0] if context.pages else context.new_page()
-        page.goto(YTM_URL)
+        try:
+            page.goto(YTM_URL)
+        except PlaywrightError as e:
+            context.close()
+            raise NetworkError("Kunde inte nå YouTube Music.") from e
 
         deadline = time.time() + (0 if headless else LOGIN_TIMEOUT)
         try:
@@ -173,6 +183,8 @@ def connect_ytmusic():
     yt = make_ytmusic(cookies)
     try:
         yt.get_library_playlists(limit=1)
+    except requests.RequestException:
+        raise
     except Exception:
         # Cookies finns men sessionen har gått ut.
         return login(stale=login_value(cookies))
@@ -269,24 +281,76 @@ def describe(result):
     return f"{artists} - {result.get('title', '')}"
 
 
-def get_or_create_playlist(yt, name, description):
+def choice_key(artist, title):
+    return f"{artist} - {title}".casefold()
+
+
+def load_choices():
+    """Dina tidigare val från -i: {"artist - titel": {"videoId", "match"} eller {"skip"}}."""
+    try:
+        return json.loads(CHOICES_FILE.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except ValueError:
+        print(f"Kunde inte läsa {CHOICES_FILE.name}, struntar i sparade val.")
+        return {}
+
+
+def save_choices(choices):
+    CHOICES_FILE.write_text(json.dumps(choices, ensure_ascii=False, indent=2, sort_keys=True)
+                            + "\n", encoding="utf-8")
+
+
+def find_playlist(yt, name):
+    """Returnerar (spellistans id, spellistan) eller (None, None) om den inte finns."""
     for p in yt.get_library_playlists(limit=None):
         if p["title"] == name:
-            return p["playlistId"]
-    print(f"Skapar spellistan '{name}'")
-    return yt.create_playlist(name, description, privacy_status="PRIVATE")
+            try:
+                return p["playlistId"], yt.get_playlist(p["playlistId"], limit=None)
+            except KeyError:
+                # ytmusicapi klarar inte tomma (t.ex. nyss skapade) spellistor.
+                return p["playlistId"], {"tracks": []}
+    return None, None
 
 
-def sync_chart(yt, chart, args):
-    print(f"=== {chart['name']} ===")
+def sync_chart(yt, chart, args, choices):
+    name = chart["name"]
+    print(f"=== {name} ===")
     fetched = fetch_chart(chart)
     if fetched is None:
         return
     date, tracks = fetched
-    print(f"Sändes {date}: {len(tracks)} låtar\n")
+    description = f"{name} {date} (Sveriges Radio)"
+    print(f"Sändes {date}: {len(tracks)} låtar")
 
-    video_ids, uncertain, missing = [], 0, 0
+    playlist_id = playlist = None
+    if not args.dry_run:
+        playlist_id, playlist = find_playlist(yt, name)
+        # Beskrivningen innehåller sändningsdatumet, så samma beskrivning
+        # betyder att spellistan redan har den här veckans lista.
+        # Med -i eller --glom-val byggs den om ändå, eftersom valen kan ha ändrats.
+        rebuild = args.valj or args.glom_val
+        if playlist and playlist.get("description") == description and not rebuild:
+            print(f"Spellistan '{name}' har redan den här listan, inget att göra.")
+            return
+    print()
+
+    video_ids = []
+    counts = {"exact": 0, "chosen": 0, "uncertain": 0, "missing": 0, "skipped": 0}
     for i, (artist, title) in enumerate(tracks, 1):
+        key = choice_key(artist, title)
+        saved = choices.get(key)
+        if saved:
+            if saved.get("skip"):
+                print(f"{i:3}.   val  {artist} - {title}  (hoppas över)")
+                counts["skipped"] += 1
+            else:
+                print(f"{i:3}.   val  {artist} - {title}")
+                print(f"{'':12}-> {saved['match']}")
+                video_ids.append(saved["videoId"])
+                counts["chosen"] += 1
+            continue
+
         scored = search_songs(yt, artist, title)
         result, score = scored[0] if scored else (None, 0)
         if result is None:
@@ -297,19 +361,31 @@ def sync_chart(yt, chart, args):
 
         if args.valj and score < 100:
             result, score = choose_song(yt, artist, title, scored)
-        elif result is not None and score < 100:
-            print(f"{'':12}-> {describe(result)}")
+            if not args.dry_run:
+                choices[key] = ({"skip": True} if result is None else
+                                {"videoId": result["videoId"], "match": describe(result)})
+                save_choices(choices)
+            if result is None:
+                counts["skipped"] += 1
+                continue
+            video_ids.append(result["videoId"])
+            counts["chosen"] += 1
+            continue
 
         if result is None:
-            missing += 1
+            counts["missing"] += 1
             continue
-        video_ids.append(result["videoId"])
         if score < 100:
-            uncertain += 1
+            print(f"{'':12}-> {describe(result)}")
+        video_ids.append(result["videoId"])
+        counts["exact" if score == 100 else "uncertain"] += 1
 
-    print(f"\nExakta träffar: {len(video_ids) - uncertain}, osäkra: {uncertain}, "
-          f"saknas: {missing}. ! = under {WARN_BELOW} %.")
-    if (uncertain or missing) and not args.valj:
+    labels = {"exact": "exakta träffar", "chosen": "dina val", "uncertain": "osäkra",
+              "missing": "saknas", "skipped": "överhoppade"}
+    summary = ", ".join(f"{labels[k]}: {n}" for k, n in counts.items()
+                        if n or k in ("exact", "uncertain", "missing"))
+    print(f"\n{summary[0].upper()}{summary[1:]}. ! = under {WARN_BELOW} %.")
+    if (counts["uncertain"] or counts["missing"]) and not args.valj:
         print("Kör med -i för att själv välja bland träffarna för osäkra låtar.")
 
     if args.dry_run:
@@ -319,18 +395,12 @@ def sync_chart(yt, chart, args):
         print("Inga låtar hittades på YouTube Music, spellistan lämnas orörd.")
         return
 
-    name = chart["name"]
-    description = f"{name} {date} (Sveriges Radio)"
-    playlist_id = get_or_create_playlist(yt, name, description)
-
-    # Byt ut innehållet så att spellistan alltid speglar veckans lista.
-    try:
-        current = yt.get_playlist(playlist_id, limit=None).get("tracks", [])
-    except KeyError:
-        # ytmusicapi klarar inte tomma (t.ex. nyss skapade) spellistor.
-        current = []
-    if current:
-        yt.remove_playlist_items(playlist_id, current)
+    if playlist_id is None:
+        print(f"Skapar spellistan '{name}'")
+        playlist_id = yt.create_playlist(name, description, privacy_status="PRIVATE")
+    elif playlist["tracks"]:
+        # Byt ut innehållet så att spellistan alltid speglar veckans lista.
+        yt.remove_playlist_items(playlist_id, playlist["tracks"])
     yt.add_playlist_items(playlist_id, video_ids, duplicates=True)
     yt.edit_playlist(playlist_id, description=description)
 
@@ -347,10 +417,17 @@ def main():
     parser.add_argument("--dry-run", action="store_true",
                         help="visa låtarna och sökträffarna utan att ändra något på YouTube Music")
     parser.add_argument("-i", "--valj", action="store_true",
-                        help="välj själv bland sökträffarna för låtar som inte matchar till 100 %%")
+                        help="välj själv bland sökträffarna för låtar som inte matchar till 100 %%; "
+                             "valen sparas och används automatiskt nästa gång")
+    parser.add_argument("--glom-val", action="store_true",
+                        help="glöm alla sparade val från -i")
     args = parser.parse_args()
     if args.valj and not sys.stdin.isatty():
         sys.exit("--valj kräver en terminal att svara i.")
+
+    if args.glom_val:
+        CHOICES_FILE.unlink(missing_ok=True)
+        print("Sparade val är borttagna.")
 
     if args.alla:
         charts = list(CHARTS.values())
@@ -359,13 +436,21 @@ def main():
     else:
         charts = [CHARTS["digilistan"]]
 
-    # Sökning kräver ingen inloggning, så en provkörning klarar sig utan.
-    yt = YTMusic() if args.dry_run else connect_ytmusic()
-
-    for n, chart in enumerate(charts):
-        if n:
-            print()
-        sync_chart(yt, chart, args)
+    choices = load_choices()
+    try:
+        # Sökning kräver ingen inloggning, så en provkörning klarar sig utan.
+        yt = YTMusic() if args.dry_run else connect_ytmusic()
+        for n, chart in enumerate(charts):
+            if n:
+                print()
+            try:
+                sync_chart(yt, chart, args, choices)
+            except NetworkError as e:
+                print(f"{e} Försök igen senare.")
+    except (NetworkError, requests.RequestException, YTMusicServerError):
+        sys.exit("Kunde inte nå YouTube Music. Försök igen senare.")
+    except KeyboardInterrupt:
+        sys.exit("\nAvbrutet.")
 
 
 if __name__ == "__main__":

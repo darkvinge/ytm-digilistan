@@ -2,7 +2,7 @@
 
 Synkar senaste [Digilistan i P3](https://www.sverigesradio.se/listprogramip3) och [Svensktoppen](https://www.sverigesradio.se/poddar/svensktoppen) från Sveriges Radio till spellistorna **Digilistan** och **Svensktoppen** på ditt YouTube Music-konto.
 
-Varje körning ersätter spellistans innehåll med veckans lista, med ettan först.
+Varje körning ersätter spellistans innehåll med veckans lista, med ettan först. Har spellistan redan den senaste listan händer ingenting.
 
 ## Krav
 
@@ -76,7 +76,21 @@ Med `-i` (eller `--valj`) får du välja själv för varje låt som inte matchar
 - **`s`** hoppar över låten, så att den inte kommer med i spellistan.
 - **Annan text** gör en ny sökning, till exempel om rätt version inte finns bland träffarna.
 
-Flaggan går att kombinera med `--dry-run` om du vill prova utan att ändra spellistan.
+Dina val sparas i `val.json` och används automatiskt nästa gång samma låt finns på listan, så du behöver bara välja en gång per låt. Sådana låtar visas med `val` i stället för ett matchningsvärde:
+
+```
+ 19.   val  Miley Cyrus - Bass Persuades (Radio Edit)
+            -> Miley Cyrus - Bass Persuades Remixx
+ 26.   val  Taylor Swift - I Knew It, I Knew You  (hoppas över)
+```
+
+Vill du ändra dig tar du bort alla sparade val med `--glom-val` och kör sedan med `-i` igen:
+
+```sh
+./synka-digilistan.sh --glom-val -i
+```
+
+Flaggan går att kombinera med `--dry-run` om du vill prova utan att ändra spellistan. Valen sparas inte vid en provkörning.
 
 ## Så fungerar det
 
@@ -93,11 +107,13 @@ Flaggan går att kombinera med `--dry-run` om du vill prova utan att ändra spel
 | `digilistan.py` | Själva synken. |
 | `requirements.txt` | Python-paket som behövs. |
 | `browser-profile/` | Skapas vid första körningen och innehåller din inloggning. **Dela den aldrig.** Den finns i `.gitignore`. |
+| `val.json` | Dina sparade val från `-i`. Den finns i `.gitignore`. |
 
 ## Felsökning
 
 - **Google säger att webbläsaren kanske inte är säker:** Google nekar ibland inloggning i webbläsare som styrs av ett skript. Prova igen senare.
 - **Logga in på ett annat konto:** ta bort mappen `browser-profile/` och kör skriptet igen.
+- **Spellistan uppdateras inte fast du har ändrat den för hand:** skriptet hoppar över listor som redan är synkade. Kör med `-i` så byggs spellistan om.
 - **Något är trasigt med installationen:** ta bort mappen `.venv/` så installeras allt på nytt vid nästa körning.
 
 ## Licens
