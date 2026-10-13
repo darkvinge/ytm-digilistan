@@ -46,10 +46,10 @@ Skriptet jämför de fem första sökträffarna och väljer den som matchar bäs
 
 ### Välja själv
 
-Med `--valj` (eller `-v`) får du välja själv för varje låt som inte matchar till 100 %:
+Med `-i` (eller `--valj`) får du välja själv för varje låt som inte matchar till 100 %:
 
 ```sh
-./synka-digilistan.sh --valj
+./synka-digilistan.sh -i
 ```
 
 ```

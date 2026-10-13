@@ -6,7 +6,7 @@
 #
 # Flaggor:
 #   --dry-run     visa låtar och sökträffar utan att ändra spellistan
-#   -v, --valj    välj själv bland sökträffarna för låtar under 100 % matchning
+#   -i, --valj    välj själv bland sökträffarna för låtar under 100 % matchning
 
 set -euo pipefail
 

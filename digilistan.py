@@ -234,7 +234,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true",
                         help="visa låtarna och sökträffarna utan att ändra något på YouTube Music")
-    parser.add_argument("-v", "--valj", action="store_true",
+    parser.add_argument("-i", "--valj", action="store_true",
                         help="välj själv bland sökträffarna för låtar som inte matchar till 100 %%")
     args = parser.parse_args()
     if args.valj and not sys.stdin.isatty():
@@ -269,7 +269,9 @@ def main():
             uncertain += 1
 
     print(f"\nExakta träffar: {len(video_ids) - uncertain}, osäkra: {uncertain}, "
-          f"saknas: {missing}. ! = under {WARN_BELOW} %, kontrollera gärna.")
+          f"saknas: {missing}. ! = under {WARN_BELOW} %.")
+    if (uncertain or missing) and not args.valj:
+        print("Kör med -i för att själv välja bland träffarna för osäkra låtar.")
 
     if args.dry_run:
         return
