@@ -50,3 +50,7 @@ Låtar som inte hittas på YouTube Music skrivs ut i slutet. Sökningen väljer 
 - **Google säger att webbläsaren kanske inte är säker:** Google nekar ibland inloggning i webbläsare som styrs av ett skript. Prova igen senare.
 - **Logga in på ett annat konto:** ta bort mappen `browser-profile/` och kör skriptet igen.
 - **Något är trasigt med installationen:** ta bort mappen `.venv/` så installeras allt på nytt vid nästa körning.
+
+## Licens
+
+[GPL-3.0](LICENSE)
