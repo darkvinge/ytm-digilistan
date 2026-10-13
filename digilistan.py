@@ -324,13 +324,14 @@ def sync_chart(yt, chart, args, choices):
     print(f"Sändes {date}: {len(tracks)} låtar")
 
     playlist_id = playlist = None
+    same_week = False
     if not args.dry_run:
         playlist_id, playlist = find_playlist(yt, name)
         # Beskrivningen innehåller sändningsdatumet, så samma beskrivning
-        # betyder att spellistan redan har den här veckans lista.
-        # Med -i eller --glom-val byggs den om ändå, eftersom valen kan ha ändrats.
-        rebuild = args.valj or args.glom_val
-        if playlist and playlist.get("description") == description and not rebuild:
+        # betyder att spellistan redan har den här veckans lista. Med -i eller
+        # --glom-val kan valen ändras, så då söker vi och jämför låtarna nedan.
+        same_week = bool(playlist) and playlist.get("description") == description
+        if same_week and not (args.valj or args.glom_val):
             print(f"Spellistan '{name}' har redan den här listan, inget att göra.")
             return
     print()
@@ -393,6 +394,10 @@ def sync_chart(yt, chart, args, choices):
 
     if not video_ids:
         print("Inga låtar hittades på YouTube Music, spellistan lämnas orörd.")
+        return
+
+    if same_week and [t.get("videoId") for t in playlist["tracks"]] == video_ids:
+        print(f"Spellistan '{name}' har redan de här låtarna, inget att göra.")
         return
 
     if playlist_id is None:
