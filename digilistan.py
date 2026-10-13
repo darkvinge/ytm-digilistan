@@ -166,20 +166,55 @@ def artist_score(wanted, found):
     return sum(best) / len(best)
 
 
+def split_title(title):
+    """Flyttar gästartister ur titeln: "Låt + A (feat. B)" -> ("Låt", ["A", "B"])."""
+    guests = []
+    feat = r"\s*[\(\[](?:feat\.?|ft\.?|with)\s+([^\)\]]+)[\)\]]"
+    guests += re.findall(feat, title, flags=re.IGNORECASE)
+    title = re.sub(feat, "", title, flags=re.IGNORECASE)
+    title, *plus = title.split(" + ", 1)
+    guests += plus
+    return title.strip(), [a for g in guests for a in split_artists(g)]
+
+
 def match_score(artist, title, result):
+    wanted_title, wanted_guests = split_title(title)
+    found_title, found_guests = split_title(result.get("title", ""))
+    wanted_artists = list(dict.fromkeys(split_artists(artist) + wanted_guests))
     found_artists = [a for r in result.get("artists") or [] for a in split_artists(r["name"])]
-    return title_score(title, result.get("title", "")) * artist_score(split_artists(artist), found_artists)
+    found_artists = list(dict.fromkeys(found_artists + found_guests))
+    return title_score(wanted_title, found_title) * artist_score(wanted_artists, found_artists)
 
 
-def find_song(yt, artist, title):
-    """Returnerar (sökträff, matchning 0–100) för den bästa träffen, eller (None, 0)."""
-    results = [r for r in yt.search(f"{artist} {title}", filter="songs", limit=SEARCH_RESULTS)
+def search_songs(yt, artist, title, query=None):
+    """Returnerar [(sökträff, matchning 0–100), ...] med bästa matchningen först."""
+    results = [r for r in yt.search(query or f"{artist} {title}", filter="songs",
+                                    limit=SEARCH_RESULTS)
                if r.get("videoId")][:SEARCH_RESULTS]
-    if not results:
-        return None, 0
-    # max() väljer den första vid lika värde, så YouTubes ordning avgör då.
-    best = max(results, key=lambda r: match_score(artist, title, r))
-    return best, round(100 * match_score(artist, title, best))
+    scored = [(r, round(100 * match_score(artist, title, r))) for r in results]
+    # sort() är stabil, så YouTubes ordning avgör vid lika värde.
+    scored.sort(key=lambda rs: rs[1], reverse=True)
+    return scored
+
+
+def choose_song(yt, artist, title, scored):
+    """Låter användaren välja bland sökträffarna. Returnerar (sökträff, matchning)
+    eller (None, 0) om låten hoppas över."""
+    indent = " " * 12
+    while True:
+        if scored:
+            for n, (result, score) in enumerate(scored, 1):
+                print(f"{indent}{n}. {score:3}%  {describe(result)}")
+        else:
+            print(f"{indent}Inga träffar.")
+        answer = input(f"{indent}Välj [Enter = 1, s = hoppa över, annat = sök på nytt]: ").strip()
+        if not answer:
+            return scored[0] if scored else (None, 0)
+        if answer.lower() == "s":
+            return None, 0
+        if answer.isdigit() and 1 <= int(answer) <= len(scored):
+            return scored[int(answer) - 1]
+        scored = search_songs(yt, artist, title, query=answer)
 
 
 def describe(result):
@@ -199,7 +234,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true",
                         help="visa låtarna och sökträffarna utan att ändra något på YouTube Music")
+    parser.add_argument("-v", "--valj", action="store_true",
+                        help="välj själv bland sökträffarna för låtar som inte matchar till 100 %%")
     args = parser.parse_args()
+    if args.valj and not sys.stdin.isatty():
+        sys.exit("--valj kräver en terminal att svara i.")
 
     episode_title, tracks = fetch_digilistan()
     print(f"{episode_title}: {len(tracks)} låtar\n")
@@ -209,17 +248,25 @@ def main():
 
     video_ids, uncertain, missing = [], 0, 0
     for i, (artist, title) in enumerate(tracks, 1):
-        result, score = find_song(yt, artist, title)
+        scored = search_songs(yt, artist, title)
+        result, score = scored[0] if scored else (None, 0)
+        if result is None:
+            print(f"{i:3}.    -   {artist} - {title}  (hittades inte)")
+        else:
+            mark = "!" if score < WARN_BELOW else " "
+            print(f"{i:3}. {mark}{score:3}%  {artist} - {title}")
+
+        if args.valj and score < 100:
+            result, score = choose_song(yt, artist, title, scored)
+        elif result is not None and score < 100:
+            print(f"{'':12}-> {describe(result)}")
+
         if result is None:
             missing += 1
-            print(f"{i:3}.    -   {artist} - {title}  (hittades inte)")
             continue
         video_ids.append(result["videoId"])
-        mark = "!" if score < WARN_BELOW else " "
-        print(f"{i:3}. {mark}{score:3}%  {artist} - {title}")
         if score < 100:
             uncertain += 1
-            print(f"{'':12}-> {describe(result)}")
 
     print(f"\nExakta träffar: {len(video_ids) - uncertain}, osäkra: {uncertain}, "
           f"saknas: {missing}. ! = under {WARN_BELOW} %, kontrollera gärna.")

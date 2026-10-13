@@ -3,7 +3,10 @@
 # "Digilistan" på YouTube Music. Det här är det enda skriptet du behöver köra.
 #
 # Första gången installeras allt som behövs automatiskt.
-# Extra argument skickas vidare, t.ex. ./synka-digilistan.sh --dry-run
+#
+# Flaggor:
+#   --dry-run     visa låtar och sökträffar utan att ändra spellistan
+#   -v, --valj    välj själv bland sökträffarna för låtar under 100 % matchning
 
 set -euo pipefail
 

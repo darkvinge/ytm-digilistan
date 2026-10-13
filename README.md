@@ -42,7 +42,30 @@ Varje låt får ett matchningsvärde som visar hur väl titel och artist från D
 - **95 %**: titeln stämmer bara om man bortser från tillägg som *(Radio Edit)* eller *(Remix)*.
 - **Under 80 %**: markeras med `!`. Ofta är det fel version, till exempel originalet i stället för en version med en gästartist, men det kan också vara fel låt.
 
-Skriptet jämför de fem första sökträffarna och väljer den som matchar bäst.
+Skriptet jämför de fem första sökträffarna och väljer den som matchar bäst. Gästartister i titeln, som *(feat. Zara Larsson)* eller *+ Zara Larsson*, räknas som artister.
+
+### Välja själv
+
+Med `--valj` (eller `-v`) får du välja själv för varje låt som inte matchar till 100 %:
+
+```sh
+./synka-digilistan.sh --valj
+```
+
+```
+ 19.   95%  Miley Cyrus - Bass Persuades (Radio Edit)
+            1.  95%  Miley Cyrus - Bass Persuades
+            2.  76%  Miley Cyrus - Bass Persuades Remixx
+            3.  33%  Miley Cyrus - Maybe You're Right
+            Välj [Enter = 1, s = hoppa över, annat = sök på nytt]:
+```
+
+- **Enter** tar förslaget.
+- **En siffra** väljer en annan träff.
+- **`s`** hoppar över låten, så att den inte kommer med i spellistan.
+- **Annan text** gör en ny sökning, till exempel om rätt version inte finns bland träffarna.
+
+Flaggan går att kombinera med `--dry-run` om du vill prova utan att ändra spellistan.
 
 ## Så fungerar det
 
