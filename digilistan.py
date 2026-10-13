@@ -8,6 +8,7 @@ import re
 import sys
 import time
 from contextlib import suppress
+from datetime import datetime
 from difflib import SequenceMatcher
 from pathlib import Path
 
@@ -31,10 +32,12 @@ EPISODES_TO_TRY = 8  # hur många avsnitt bakåt vi letar efter en låtlista
 SEARCH_RESULTS = 5  # hur många sökträffar vi jämför
 WARN_BELOW = 80  # procent; träffar under detta markeras med !
 VERSION_PENALTY = 0.95  # titeln stämmer bara om man bortser från (Radio Edit) o.d.
+MONTHS = ["januari", "februari", "mars", "april", "maj", "juni", "juli",
+          "augusti", "september", "oktober", "november", "december"]
 
 
 def fetch_chart(chart):
-    """Returnerar (avsnittstitel, [(artist, titel), ...]) med etta först, eller
+    """Returnerar (sändningsdatum, [(artist, titel), ...]) med etta först, eller
     None om ingen låtlista finns.
 
     Tar senaste avsnittet som har en låtlista, eftersom listan för ett nyss
@@ -83,7 +86,14 @@ def fetch_chart(chart):
             tracks = [t for t in tracks if t not in bubblers]
         else:
             print("Kunde inte avgöra vilka som är bubblare, tar med alla låtar.")
-    return episode["title"], tracks
+    return episode_date(episode), tracks
+
+
+def episode_date(episode):
+    """Gör om SR:s "/Date(1791709380000)/" till t.ex. "11 oktober 2026"."""
+    ms = int(re.search(r"\d+", episode["publishdateutc"]).group())
+    d = datetime.fromtimestamp(ms / 1000)
+    return f"{d.day} {MONTHS[d.month - 1]} {d.year}"
 
 
 def find_bubblers(text, tracks, expected):
@@ -272,8 +282,8 @@ def sync_chart(yt, chart, args):
     fetched = fetch_chart(chart)
     if fetched is None:
         return
-    episode_title, tracks = fetched
-    print(f"{episode_title}: {len(tracks)} låtar\n")
+    date, tracks = fetched
+    print(f"Sändes {date}: {len(tracks)} låtar\n")
 
     video_ids, uncertain, missing = [], 0, 0
     for i, (artist, title) in enumerate(tracks, 1):
@@ -310,8 +320,7 @@ def sync_chart(yt, chart, args):
         return
 
     name = chart["name"]
-    description = episode_title if name in episode_title else f"{name}: {episode_title}"
-    description += " (Sveriges Radio)"
+    description = f"{name} {date} (Sveriges Radio)"
     playlist_id = get_or_create_playlist(yt, name, description)
 
     # Byt ut innehållet så att spellistan alltid speglar veckans lista.
