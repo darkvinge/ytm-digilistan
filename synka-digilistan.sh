@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Synkar senaste Digilistan från Sveriges Radio till spellistan
+# "Digilistan" på YouTube Music. Det här är det enda skriptet du behöver köra.
+#
+# Första gången installeras allt som behövs automatiskt.
+# Extra argument skickas vidare, t.ex. ./synka-digilistan.sh --dry-run
+
+set -euo pipefail
+
+cd "$(dirname "$(readlink -f "$0")")"
+
+VENV=.venv
+
+if ! "$VENV/bin/python" -c "import ytmusicapi, requests, playwright" 2>/dev/null; then
+    echo "Installerar det som behövs (bara första gången)..."
+    rm -rf "$VENV"
+    python3 -m venv "$VENV"
+    "$VENV/bin/pip" install --quiet --upgrade pip
+    "$VENV/bin/pip" install --quiet -r requirements.txt
+fi
+
+# Gör ingenting om webbläsaren redan är nedladdad.
+"$VENV/bin/playwright" install chromium
+
+exec "$VENV/bin/python" digilistan.py "$@"

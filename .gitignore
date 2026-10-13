@@ -1,0 +1,7 @@
+# Python
+.venv/
+__pycache__/
+
+# Inloggning – får aldrig checkas in
+browser-profile/
+browser.json
