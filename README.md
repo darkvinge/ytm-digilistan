@@ -1,6 +1,6 @@
 # ytm-digilistan
 
-Synkar senaste [Digilistan i P3](https://www.sverigesradio.se/listprogramip3) från Sveriges Radio till en spellista som heter **Digilistan** på ditt YouTube Music-konto.
+Synkar senaste [Digilistan i P3](https://www.sverigesradio.se/listprogramip3) och [Svensktoppen](https://www.sverigesradio.se/poddar/svensktoppen) från Sveriges Radio till spellistorna **Digilistan** och **Svensktoppen** på ditt YouTube Music-konto.
 
 Varje körning ersätter spellistans innehåll med veckans lista, med ettan först.
 
@@ -21,11 +21,22 @@ cd ytm-digilistan
 
 Första gången öppnas ett Chromium-fönster på music.youtube.com. Logga in med ditt Google-konto. Skriptet märker själv när du är inloggad, stänger fönstret och synkar listan. Inloggningen sparas, så nästa gång körs allt i bakgrunden utan att något fönster öppnas.
 
+Utan flaggor synkas Digilistan. Välj lista så här:
+
+```sh
+./synka-digilistan.sh --svensktoppen   # bara Svensktoppen
+./synka-digilistan.sh --alla           # både Digilistan och Svensktoppen
+```
+
 Vill du bara se veckans lista och vilka låtar som hittas, utan att ändra något på YouTube Music:
 
 ```sh
 ./synka-digilistan.sh --dry-run
 ```
+
+### Svensktoppens bubblare
+
+I Svensktoppen spelas också veckans tre bubblare, som inte är med på listan. Sveriges Radios låtlista skiljer inte på dem, så skriptet letar i avsnittstexten efter meningen om bubblare, till exempel *"Tomas Andersson Wij (Mina Vänner), Greczula (Love=Art) och Chris Kläfford (Ain´t Built For Leaving) är veckans bubblare."*. Hittar skriptet exakt tre låtar vars artist nämns där hoppas de över. Annars tas alla låtar med, eftersom det inte går att avgöra vilka som är bubblare. Avsnittstexten nämner inte alltid bubblarna.
 
 ### Matchning
 
@@ -69,10 +80,10 @@ Flaggan går att kombinera med `--dry-run` om du vill prova utan att ändra spel
 
 ## Så fungerar det
 
-1. Hämtar låtlistan för senaste avsnittet av Digilistan från [Sveriges Radios öppna API](https://api.sr.se/api/documentation/v2/).
+1. Hämtar låtlistan för senaste avsnittet av Digilistan eller Svensktoppen från [Sveriges Radios öppna API](https://api.sr.se/api/documentation/v2/).
 2. Startar Chromium med en egen profil (`browser-profile/`) och läser ut inloggningscookies för YouTube Music. Om du inte är inloggad visas fönstret så att du kan logga in.
 3. Söker upp varje låt på YouTube Music med [ytmusicapi](https://github.com/sigma67/ytmusicapi) och väljer den träff som matchar bäst (se [Matchning](#matchning)).
-4. Skapar spellistan **Digilistan** (privat) om den inte finns och fyller den med veckans låtar.
+4. Skapar spellistan **Digilistan** eller **Svensktoppen** (privat) om den inte finns och fyller den med veckans låtar.
 
 ## Filer
 

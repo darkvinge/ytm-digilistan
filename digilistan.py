@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Hämtar senaste Digilistan från Sveriges Radio och lägger låtarna i
-spellistan "Digilistan" på YouTube Music."""
+"""Hämtar senaste Digilistan och/eller Svensktoppen från Sveriges Radio och
+lägger låtarna i varsin spellista på YouTube Music."""
 
 import argparse
+import html
 import re
 import sys
 import time
@@ -15,27 +16,33 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import sync_playwright
 from ytmusicapi import YTMusic
 
-SR_PROGRAM_ID = 2697  # Digilistan i P3
 SR_API = "https://api.sr.se/api/v2"
-PLAYLIST_NAME = "Digilistan"
+# Listorna vi kan synka. Spellistan på YouTube Music får samma namn som listan.
+CHARTS = {
+    "digilistan": {"name": "Digilistan", "program_id": 2697, "bubblers": 0},
+    # Svensktoppen spelar även veckans tre bubblare, som inte är med på listan.
+    "svensktoppen": {"name": "Svensktoppen", "program_id": 2023, "bubblers": 3},
+}
 PROFILE_DIR = Path(__file__).with_name("browser-profile")
 YTM_URL = "https://music.youtube.com"
 LOGIN_COOKIE = "__Secure-3PAPISID"
 LOGIN_TIMEOUT = 300  # sekunder
-EPISODES_TO_TRY = 4  # hur många avsnitt bakåt vi letar efter en låtlista
+EPISODES_TO_TRY = 8  # hur många avsnitt bakåt vi letar efter en låtlista
 SEARCH_RESULTS = 5  # hur många sökträffar vi jämför
 WARN_BELOW = 80  # procent; träffar under detta markeras med !
 VERSION_PENALTY = 0.95  # titeln stämmer bara om man bortser från (Radio Edit) o.d.
 
 
-def fetch_digilistan():
-    """Returnerar (avsnittstitel, [(artist, titel), ...]) med etta först.
+def fetch_chart(chart):
+    """Returnerar (avsnittstitel, [(artist, titel), ...]) med etta först, eller
+    None om ingen låtlista finns.
 
     Tar senaste avsnittet som har en låtlista, eftersom listan för ett nyss
-    sänt avsnitt inte alltid är publicerad än."""
+    sänt avsnitt inte alltid är publicerad än. Flödet innehåller också
+    webbinslag utan låtlista, som hoppas över på samma sätt."""
     episodes = requests.get(
         f"{SR_API}/episodes/index",
-        params={"programid": SR_PROGRAM_ID, "format": "json", "size": EPISODES_TO_TRY},
+        params={"programid": chart["program_id"], "format": "json", "size": EPISODES_TO_TRY},
         timeout=30,
     ).json()["episodes"]
 
@@ -47,9 +54,10 @@ def fetch_digilistan():
         ).json().get("song", [])
         if songs:
             break
-        print(f"Ingen låtlista för '{episode['title']}' än, provar föregående avsnitt.")
+        print(f"Ingen låtlista för '{episode['title']}', provar föregående avsnitt.")
     else:
-        sys.exit("Hittade ingen låtlista hos Sveriges Radio, spellistan lämnas orörd.")
+        print("Hittade ingen låtlista hos Sveriges Radio, spellistan lämnas orörd.")
+        return None
 
     # Listan räknas ner i sändning, så den senast spelade låten är etta.
     songs.sort(key=lambda s: s["starttimeutc"], reverse=True)
@@ -60,7 +68,36 @@ def fetch_digilistan():
         if key not in seen:
             seen.add(key)
             tracks.append((s["artist"], s["title"]))
+
+    if chart["bubblers"]:
+        # Avsnittslistan saknar avsnittstexten, så den hämtas separat.
+        text = requests.get(
+            f"{SR_API}/episodes/get",
+            params={"id": episode["id"], "format": "json"},
+            timeout=30,
+        ).json()["episode"].get("text")
+        bubblers = find_bubblers(text, tracks, chart["bubblers"])
+        if bubblers:
+            print("Hoppar över veckans bubblare: "
+                  + ", ".join(f"{a} - {t}" for a, t in bubblers))
+            tracks = [t for t in tracks if t not in bubblers]
+        else:
+            print("Kunde inte avgöra vilka som är bubblare, tar med alla låtar.")
     return episode["title"], tracks
+
+
+def find_bubblers(text, tracks, expected):
+    """Letar upp låtarna vars artist nämns i avsnittstextens mening om bubblare,
+    t.ex. "A (Låt), B (Låt) och C (Låt) är veckans bubblare.". Returnerar dem
+    bara om det blir exakt så många som förväntat, annars en tom lista."""
+    sentences = re.split(r"(?<=[.!?])\s+|\n", html.unescape(text or ""))
+    bubbler_text = " ".join(s for s in sentences if "bubblare" in s.casefold())
+    if not bubbler_text:
+        return []
+    padded = f" {normalize(bubbler_text)} "
+    found = [t for t in tracks
+             if any(f" {normalize(a)} " in padded for a in split_artists(t[0]))]
+    return found if len(found) == expected else []
 
 
 def login_value(cookies):
@@ -222,29 +259,21 @@ def describe(result):
     return f"{artists} - {result.get('title', '')}"
 
 
-def get_or_create_playlist(yt, description):
+def get_or_create_playlist(yt, name, description):
     for p in yt.get_library_playlists(limit=None):
-        if p["title"] == PLAYLIST_NAME:
+        if p["title"] == name:
             return p["playlistId"]
-    print(f"Skapar spellistan '{PLAYLIST_NAME}'")
-    return yt.create_playlist(PLAYLIST_NAME, description, privacy_status="PRIVATE")
+    print(f"Skapar spellistan '{name}'")
+    return yt.create_playlist(name, description, privacy_status="PRIVATE")
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--dry-run", action="store_true",
-                        help="visa låtarna och sökträffarna utan att ändra något på YouTube Music")
-    parser.add_argument("-i", "--valj", action="store_true",
-                        help="välj själv bland sökträffarna för låtar som inte matchar till 100 %%")
-    args = parser.parse_args()
-    if args.valj and not sys.stdin.isatty():
-        sys.exit("--valj kräver en terminal att svara i.")
-
-    episode_title, tracks = fetch_digilistan()
+def sync_chart(yt, chart, args):
+    print(f"=== {chart['name']} ===")
+    fetched = fetch_chart(chart)
+    if fetched is None:
+        return
+    episode_title, tracks = fetched
     print(f"{episode_title}: {len(tracks)} låtar\n")
-
-    # Sökning kräver ingen inloggning, så en provkörning klarar sig utan.
-    yt = YTMusic() if args.dry_run else connect_ytmusic()
 
     video_ids, uncertain, missing = [], 0, 0
     for i, (artist, title) in enumerate(tracks, 1):
@@ -277,10 +306,13 @@ def main():
         return
 
     if not video_ids:
-        sys.exit("Inga låtar hittades på YouTube Music, spellistan lämnas orörd.")
+        print("Inga låtar hittades på YouTube Music, spellistan lämnas orörd.")
+        return
 
-    description = f"{episode_title} (Sveriges Radio P3)"
-    playlist_id = get_or_create_playlist(yt, description)
+    name = chart["name"]
+    description = episode_title if name in episode_title else f"{name}: {episode_title}"
+    description += " (Sveriges Radio)"
+    playlist_id = get_or_create_playlist(yt, name, description)
 
     # Byt ut innehållet så att spellistan alltid speglar veckans lista.
     try:
@@ -293,7 +325,38 @@ def main():
     yt.add_playlist_items(playlist_id, video_ids, duplicates=True)
     yt.edit_playlist(playlist_id, description=description)
 
-    print(f"Lade till {len(video_ids)} låtar i '{PLAYLIST_NAME}'.")
+    print(f"Lade till {len(video_ids)} låtar i '{name}'.")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    which = parser.add_mutually_exclusive_group()
+    which.add_argument("--svensktoppen", action="store_true",
+                       help="synka Svensktoppen i stället för Digilistan")
+    which.add_argument("--alla", action="store_true",
+                       help="synka både Digilistan och Svensktoppen")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="visa låtarna och sökträffarna utan att ändra något på YouTube Music")
+    parser.add_argument("-i", "--valj", action="store_true",
+                        help="välj själv bland sökträffarna för låtar som inte matchar till 100 %%")
+    args = parser.parse_args()
+    if args.valj and not sys.stdin.isatty():
+        sys.exit("--valj kräver en terminal att svara i.")
+
+    if args.alla:
+        charts = list(CHARTS.values())
+    elif args.svensktoppen:
+        charts = [CHARTS["svensktoppen"]]
+    else:
+        charts = [CHARTS["digilistan"]]
+
+    # Sökning kräver ingen inloggning, så en provkörning klarar sig utan.
+    yt = YTMusic() if args.dry_run else connect_ytmusic()
+
+    for n, chart in enumerate(charts):
+        if n:
+            print()
+        sync_chart(yt, chart, args)
 
 
 if __name__ == "__main__":

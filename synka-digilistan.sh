@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Synkar senaste Digilistan från Sveriges Radio till spellistan
-# "Digilistan" på YouTube Music. Det här är det enda skriptet du behöver köra.
+# Synkar senaste Digilistan och/eller Svensktoppen från Sveriges Radio till
+# spellistorna "Digilistan" och "Svensktoppen" på YouTube Music.
+# Det här är det enda skriptet du behöver köra.
 #
 # Första gången installeras allt som behövs automatiskt.
 #
 # Flaggor:
+#   --svensktoppen  synka Svensktoppen i stället för Digilistan
+#   --alla        synka både Digilistan och Svensktoppen
 #   --dry-run     visa låtar och sökträffar utan att ändra spellistan
 #   -i, --valj    välj själv bland sökträffarna för låtar under 100 % matchning
 
