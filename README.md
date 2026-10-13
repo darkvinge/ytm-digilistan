@@ -21,20 +21,35 @@ cd ytm-digilistan
 
 Första gången öppnas ett Chromium-fönster på music.youtube.com. Logga in med ditt Google-konto. Skriptet märker själv när du är inloggad, stänger fönstret och synkar listan. Inloggningen sparas, så nästa gång körs allt i bakgrunden utan att något fönster öppnas.
 
-Vill du bara se veckans lista utan att ändra något på YouTube Music:
+Vill du bara se veckans lista och vilka låtar som hittas, utan att ändra något på YouTube Music:
 
 ```sh
 ./synka-digilistan.sh --dry-run
 ```
 
+### Matchning
+
+Varje låt får ett matchningsvärde som visar hur väl titel och artist från Digilistan stämmer med det som hittades på YouTube Music:
+
+```
+ 19.   95%  Miley Cyrus - Bass Persuades (Radio Edit)
+            -> Miley Cyrus - Bass Persuades
+ 22. ! 77%  Pinkpantheress, Zara Larsson - Stateside
+            -> PinkPantheress - Stateside
+```
+
+- **100 %**: titel och artister stämmer exakt (skiftläge och skiljetecken räknas inte).
+- **95 %**: titeln stämmer bara om man bortser från tillägg som *(Radio Edit)* eller *(Remix)*.
+- **Under 80 %**: markeras med `!`. Ofta är det fel version, till exempel originalet i stället för en version med en gästartist, men det kan också vara fel låt.
+
+Skriptet jämför de fem första sökträffarna och väljer den som matchar bäst.
+
 ## Så fungerar det
 
 1. Hämtar låtlistan för senaste avsnittet av Digilistan från [Sveriges Radios öppna API](https://api.sr.se/api/documentation/v2/).
 2. Startar Chromium med en egen profil (`browser-profile/`) och läser ut inloggningscookies för YouTube Music. Om du inte är inloggad visas fönstret så att du kan logga in.
-3. Söker upp varje låt på YouTube Music med [ytmusicapi](https://github.com/sigma67/ytmusicapi).
+3. Söker upp varje låt på YouTube Music med [ytmusicapi](https://github.com/sigma67/ytmusicapi) och väljer den träff som matchar bäst (se [Matchning](#matchning)).
 4. Skapar spellistan **Digilistan** (privat) om den inte finns och fyller den med veckans låtar.
-
-Låtar som inte hittas på YouTube Music skrivs ut i slutet. Sökningen väljer den bästa träffen, så ibland kan det bli fel version av en låt.
 
 ## Filer
 

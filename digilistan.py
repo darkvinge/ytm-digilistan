@@ -3,9 +3,11 @@
 spellistan "Digilistan" på YouTube Music."""
 
 import argparse
+import re
 import sys
 import time
 from contextlib import suppress
+from difflib import SequenceMatcher
 from pathlib import Path
 
 import requests
@@ -21,6 +23,9 @@ YTM_URL = "https://music.youtube.com"
 LOGIN_COOKIE = "__Secure-3PAPISID"
 LOGIN_TIMEOUT = 300  # sekunder
 EPISODES_TO_TRY = 4  # hur många avsnitt bakåt vi letar efter en låtlista
+SEARCH_RESULTS = 5  # hur många sökträffar vi jämför
+WARN_BELOW = 80  # procent; träffar under detta markeras med !
+VERSION_PENALTY = 0.95  # titeln stämmer bara om man bortser från (Radio Edit) o.d.
 
 
 def fetch_digilistan():
@@ -127,12 +132,59 @@ def connect_ytmusic():
     return yt
 
 
-def find_video_id(yt, artist, title):
-    results = yt.search(f"{artist} {title}", filter="songs", limit=5)
-    for r in results:
-        if r.get("videoId"):
-            return r["videoId"]
-    return None
+def normalize(text):
+    return " ".join(re.sub(r"[^\w\s]", " ", text.casefold()).split())
+
+
+def strip_version(title):
+    """Tar bort t.ex. "(Radio Edit)", "[Remix]" och "- Live" från en titel."""
+    return re.sub(r"\s*(\(.*?\)|\[.*?\]|\s-\s.*)", "", title)
+
+
+def similarity(a, b):
+    return SequenceMatcher(None, normalize(a), normalize(b)).ratio()
+
+
+def split_artists(artists):
+    parts = re.split(r",|&| feat\.? | ft\.? | x | och ", artists, flags=re.IGNORECASE)
+    return [p.strip() for p in parts if p.strip()]
+
+
+def title_score(wanted, found):
+    exact = similarity(wanted, found)
+    if exact == 1:
+        return 1.0
+    return max(exact, VERSION_PENALTY * similarity(strip_version(wanted), strip_version(found)))
+
+
+def artist_score(wanted, found):
+    """Hur väl artistlistorna täcker varandra, åt båda hållen."""
+    if not wanted or not found:
+        return 0.0
+    best = [max(similarity(w, f) for f in found) for w in wanted]
+    best += [max(similarity(f, w) for w in wanted) for f in found]
+    return sum(best) / len(best)
+
+
+def match_score(artist, title, result):
+    found_artists = [a for r in result.get("artists") or [] for a in split_artists(r["name"])]
+    return title_score(title, result.get("title", "")) * artist_score(split_artists(artist), found_artists)
+
+
+def find_song(yt, artist, title):
+    """Returnerar (sökträff, matchning 0–100) för den bästa träffen, eller (None, 0)."""
+    results = [r for r in yt.search(f"{artist} {title}", filter="songs", limit=SEARCH_RESULTS)
+               if r.get("videoId")][:SEARCH_RESULTS]
+    if not results:
+        return None, 0
+    # max() väljer den första vid lika värde, så YouTubes ordning avgör då.
+    best = max(results, key=lambda r: match_score(artist, title, r))
+    return best, round(100 * match_score(artist, title, best))
+
+
+def describe(result):
+    artists = ", ".join(a["name"] for a in result.get("artists") or [])
+    return f"{artists} - {result.get('title', '')}"
 
 
 def get_or_create_playlist(yt, description):
@@ -146,26 +198,34 @@ def get_or_create_playlist(yt, description):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true",
-                        help="visa låtarna utan att ändra något på YouTube Music")
+                        help="visa låtarna och sökträffarna utan att ändra något på YouTube Music")
     args = parser.parse_args()
 
     episode_title, tracks = fetch_digilistan()
-    print(f"{episode_title}: {len(tracks)} låtar")
+    print(f"{episode_title}: {len(tracks)} låtar\n")
+
+    # Sökning kräver ingen inloggning, så en provkörning klarar sig utan.
+    yt = YTMusic() if args.dry_run else connect_ytmusic()
+
+    video_ids, uncertain, missing = [], 0, 0
     for i, (artist, title) in enumerate(tracks, 1):
-        print(f"{i:3}. {artist} - {title}")
+        result, score = find_song(yt, artist, title)
+        if result is None:
+            missing += 1
+            print(f"{i:3}.    -   {artist} - {title}  (hittades inte)")
+            continue
+        video_ids.append(result["videoId"])
+        mark = "!" if score < WARN_BELOW else " "
+        print(f"{i:3}. {mark}{score:3}%  {artist} - {title}")
+        if score < 100:
+            uncertain += 1
+            print(f"{'':12}-> {describe(result)}")
+
+    print(f"\nExakta träffar: {len(video_ids) - uncertain}, osäkra: {uncertain}, "
+          f"saknas: {missing}. ! = under {WARN_BELOW} %, kontrollera gärna.")
 
     if args.dry_run:
         return
-
-    yt = connect_ytmusic()
-
-    video_ids, missing = [], []
-    for artist, title in tracks:
-        vid = find_video_id(yt, artist, title)
-        if vid:
-            video_ids.append(vid)
-        else:
-            missing.append(f"{artist} - {title}")
 
     if not video_ids:
         sys.exit("Inga låtar hittades på YouTube Music, spellistan lämnas orörd.")
@@ -184,11 +244,7 @@ def main():
     yt.add_playlist_items(playlist_id, video_ids, duplicates=True)
     yt.edit_playlist(playlist_id, description=description)
 
-    print(f"\nLade till {len(video_ids)} låtar i '{PLAYLIST_NAME}'.")
-    if missing:
-        print("Hittades inte på YouTube Music:")
-        for m in missing:
-            print(f"  - {m}")
+    print(f"Lade till {len(video_ids)} låtar i '{PLAYLIST_NAME}'.")
 
 
 if __name__ == "__main__":
