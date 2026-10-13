@@ -12,6 +12,7 @@
 #   -i, --valj    välj själv bland sökträffarna för låtar under 100 % matchning
 #                 (valen sparas och används automatiskt nästa gång)
 #   --glom-val    glöm alla sparade val
+#   -f, --force   uppdatera spellistan även om den redan har veckans lista
 
 set -euo pipefail
 

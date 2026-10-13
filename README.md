@@ -2,7 +2,7 @@
 
 Synkar senaste [Digilistan i P3](https://www.sverigesradio.se/listprogramip3) och [Svensktoppen](https://www.sverigesradio.se/poddar/svensktoppen) från Sveriges Radio till spellistorna **Digilistan** och **Svensktoppen** på ditt YouTube Music-konto.
 
-Varje körning ersätter spellistans innehåll med veckans lista, med ettan först. Har spellistan redan den senaste listan händer ingenting.
+Varje körning ersätter spellistans innehåll med veckans lista, med ettan först. Har spellistan redan den senaste listan händer ingenting, om du inte kör med `-f` (`--force`).
 
 ## Krav
 
@@ -113,7 +113,7 @@ Flaggan går att kombinera med `--dry-run` om du vill prova utan att ändra spel
 
 - **Google säger att webbläsaren kanske inte är säker:** Google nekar ibland inloggning i webbläsare som styrs av ett skript. Prova igen senare.
 - **Logga in på ett annat konto:** ta bort mappen `browser-profile/` och kör skriptet igen.
-- **Spellistan uppdateras inte fast du har ändrat den för hand:** skriptet hoppar över listor som redan är synkade. Kör med `-i` så byggs spellistan om.
+- **Spellistan uppdateras inte fast du har ändrat den för hand:** skriptet hoppar över listor som redan är synkade. Kör med `-f` så uppdateras spellistan ändå.
 - **Något är trasigt med installationen:** ta bort mappen `.venv/` så installeras allt på nytt vid nästa körning.
 
 ## Licens

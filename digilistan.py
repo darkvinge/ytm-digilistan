@@ -330,7 +330,9 @@ def sync_chart(yt, chart, args, choices):
         # Beskrivningen innehåller sändningsdatumet, så samma beskrivning
         # betyder att spellistan redan har den här veckans lista. Med -i eller
         # --glom-val kan valen ändras, så då söker vi och jämför låtarna nedan.
-        same_week = bool(playlist) and playlist.get("description") == description
+        # Med -f uppdateras spellistan alltid.
+        same_week = (bool(playlist) and playlist.get("description") == description
+                     and not args.force)
         if same_week and not (args.valj or args.glom_val):
             print(f"Spellistan '{name}' har redan den här listan, inget att göra.")
             return
@@ -426,6 +428,8 @@ def main():
                              "valen sparas och används automatiskt nästa gång")
     parser.add_argument("--glom-val", action="store_true",
                         help="glöm alla sparade val från -i")
+    parser.add_argument("-f", "--force", action="store_true",
+                        help="uppdatera spellistan även om den redan har veckans lista")
     args = parser.parse_args()
     if args.valj and not sys.stdin.isatty():
         sys.exit("--valj kräver en terminal att svara i.")
