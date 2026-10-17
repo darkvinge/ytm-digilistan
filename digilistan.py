@@ -28,6 +28,10 @@ CHARTS = {
 }
 PROFILE_DIR = Path(__file__).with_name("browser-profile")
 CHOICES_FILE = Path(__file__).with_name("val.json")
+SETTINGS_FILE = Path(__file__).with_name("installningar.json")
+# Flaggornas standardvärden när inget är sparat.
+DEFAULTS = {"lista": "digilistan", "dry_run": False, "valj": False, "glom_val": False,
+            "force": False, "radioordning": False}
 YTM_URL = "https://music.youtube.com"
 LOGIN_COOKIE = "__Secure-3PAPISID"
 LOGIN_TIMEOUT = 300  # sekunder
@@ -420,25 +424,96 @@ def sync_chart(yt, chart, args, choices):
     print(f"Lade till {len(video_ids)} låtar i '{name}'.")
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+def load_settings():
+    try:
+        settings = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except ValueError:
+        print(f"Kunde inte läsa {SETTINGS_FILE.name}, struntar i sparade inställningar.")
+        return {}
+    return {k: v for k, v in settings.items() if k in DEFAULTS}
+
+
+def save_settings(settings):
+    SETTINGS_FILE.write_text(json.dumps(settings, ensure_ascii=False, indent=2, sort_keys=True)
+                             + "\n", encoding="utf-8")
+
+
+def describe_settings(settings):
+    """Visar inställningar som de flaggor man skriver, t.ex. "--alla -r"."""
+    flags = []
+    for key, value in sorted(settings.items()):
+        if key == "lista":
+            flags.append(f"--{value}")
+        else:
+            flag = key.replace("_", "-")
+            flags.append(f"--{flag}" if value else f"--no-{flag}")
+    return " ".join(flags) or "(inga)"
+
+
+def parse_args():
+    """Returnerar (flaggor, flaggor angivna på kommandoraden) med sparade
+    inställningar som standardvärden."""
+    # SUPPRESS gör att bara flaggor som faktiskt angavs hamnar i resultatet.
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     argument_default=argparse.SUPPRESS)
+    on_off = argparse.BooleanOptionalAction
     which = parser.add_mutually_exclusive_group()
-    which.add_argument("--svensktoppen", action="store_true",
+    which.add_argument("--digilistan", dest="lista", action="store_const", const="digilistan",
+                       help="synka Digilistan (standard)")
+    which.add_argument("--svensktoppen", dest="lista", action="store_const", const="svensktoppen",
                        help="synka Svensktoppen i stället för Digilistan")
-    which.add_argument("--alla", action="store_true",
+    which.add_argument("--alla", dest="lista", action="store_const", const="alla",
                        help="synka både Digilistan och Svensktoppen")
-    parser.add_argument("--dry-run", action="store_true",
+    parser.add_argument("--dry-run", action=on_off,
                         help="visa låtarna och sökträffarna utan att ändra något på YouTube Music")
-    parser.add_argument("-i", "--valj", action="store_true",
+    parser.add_argument("-i", "--valj", action=on_off,
                         help="välj själv bland sökträffarna för låtar som inte matchar till 100 %%; "
                              "valen sparas och används automatiskt nästa gång")
-    parser.add_argument("--glom-val", action="store_true",
+    parser.add_argument("--glom-val", action=on_off,
                         help="glöm alla sparade val från -i")
-    parser.add_argument("-f", "--force", action="store_true",
+    parser.add_argument("-f", "--force", action=on_off,
                         help="uppdatera spellistan även om den redan har veckans lista")
-    parser.add_argument("-r", "--radioordning", action="store_true",
+    parser.add_argument("-r", "--radioordning", action=on_off,
                         help="lägg låtarna i samma ordning som i radio, med ettan sist")
-    args = parser.parse_args()
+    settings = parser.add_argument_group("inställningar")
+    settings.add_argument("--spara", action="store_true",
+                          help="spara flaggorna i det här kommandot som standard och kör sedan; "
+                               "stäng av en sparad flagga med t.ex. --spara --no-radioordning")
+    settings.add_argument("--visa-installningar", action="store_true",
+                          help="visa sparade inställningar")
+    settings.add_argument("--rensa-installningar", action="store_true",
+                          help="ta bort alla sparade inställningar")
+
+    given = vars(parser.parse_args())
+    flags = {k: v for k, v in given.items() if k in DEFAULTS}
+    meta = {k: given.get(k, False) for k in ("spara", "visa_installningar", "rensa_installningar")}
+
+    saved = load_settings()
+    if meta["rensa_installningar"]:
+        SETTINGS_FILE.unlink(missing_ok=True)
+        saved = {}
+        print("Sparade inställningar är borttagna.")
+    if meta["spara"]:
+        # Värden som är samma som standard behöver inte sparas.
+        saved = {k: v for k, v in {**saved, **flags}.items() if v != DEFAULTS[k]}
+        save_settings(saved)
+        print(f"Sparade inställningar: {describe_settings(saved)}")
+        if saved.get("glom_val"):
+            print("Obs: med --glom-val sparad glöms dina val från -i vid varje körning.")
+    if meta["visa_installningar"]:
+        print(f"Sparade inställningar: {describe_settings(saved)}")
+    if meta["visa_installningar"] or (meta["rensa_installningar"] and not flags):
+        sys.exit()
+    if saved and not meta["spara"]:
+        print(f"Använder sparade inställningar: {describe_settings(saved)}")
+
+    return argparse.Namespace(**{**DEFAULTS, **saved, **flags})
+
+
+def main():
+    args = parse_args()
     if args.valj and not sys.stdin.isatty():
         sys.exit("--valj kräver en terminal att svara i.")
 
@@ -446,12 +521,10 @@ def main():
         CHOICES_FILE.unlink(missing_ok=True)
         print("Sparade val är borttagna.")
 
-    if args.alla:
+    if args.lista == "alla":
         charts = list(CHARTS.values())
-    elif args.svensktoppen:
-        charts = [CHARTS["svensktoppen"]]
     else:
-        charts = [CHARTS["digilistan"]]
+        charts = [CHARTS[args.lista]]
 
     choices = load_choices()
     try:

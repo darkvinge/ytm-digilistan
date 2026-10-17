@@ -34,13 +34,30 @@ Vill du lyssna i samma ordning som i radio, med sista placeringen först och ett
 ./synka-digilistan.sh -r
 ```
 
-Ordningen gäller tills du kör utan `-r` igen, och då vänds spellistan tillbaka.
+Ordningen gäller tills du kör utan `-r` igen, och då vänds spellistan tillbaka. Vill du alltid ha radioordning kan du spara den (se [Spara inställningar](#spara-inställningar)).
 
 Vill du bara se veckans lista och vilka låtar som hittas, utan att ändra något på YouTube Music:
 
 ```sh
 ./synka-digilistan.sh --dry-run
 ```
+
+### Spara inställningar
+
+Lägg till `--spara` så sparas flaggorna i kommandot som standard. Sedan körs synken som vanligt:
+
+```sh
+./synka-digilistan.sh --alla -r --spara   # spara: båda listorna, i radioordning
+./synka-digilistan.sh                     # använder nu --alla -r
+```
+
+- **Nya flaggor läggs till:** `--spara` lägger till de flaggor du anger bland de redan sparade, så du kan bygga upp inställningarna stegvis.
+- **Stänga av för en körning:** varje flagga har en motsvarighet med `--no-`, till exempel `./synka-digilistan.sh --no-radioordning`. Använd `--digilistan` för att bara synka Digilistan när `--alla` eller `--svensktoppen` är sparat.
+- **Stänga av permanent:** lägg till `--spara`, till exempel `./synka-digilistan.sh --spara --no-radioordning`.
+- **Visa inställningarna:** `./synka-digilistan.sh --visa-installningar`.
+- **Ta bort alla:** `./synka-digilistan.sh --rensa-installningar`.
+
+Inställningarna sparas i `installningar.json`. Vid varje körning skrivs det ut vilka sparade inställningar som används.
 
 ### Svensktoppens bubblare
 
@@ -116,6 +133,7 @@ Flaggan går att kombinera med `--dry-run` om du vill prova utan att ändra spel
 | `requirements.txt` | Python-paket som behövs. |
 | `browser-profile/` | Skapas vid första körningen och innehåller din inloggning. **Dela den aldrig.** Den finns i `.gitignore`. |
 | `val.json` | Dina sparade val från `-i`. Den finns i `.gitignore`. |
+| `installningar.json` | Dina sparade inställningar från `--spara`. Den finns i `.gitignore`. |
 
 ## Felsökning
 

@@ -6,14 +6,22 @@
 # Första gången installeras allt som behövs automatiskt.
 #
 # Flaggor:
-#   --svensktoppen  synka Svensktoppen i stället för Digilistan
-#   --alla        synka både Digilistan och Svensktoppen
-#   --dry-run     visa låtar och sökträffar utan att ändra spellistan
-#   -i, --valj    välj själv bland sökträffarna för låtar under 100 % matchning
-#                 (valen sparas och används automatiskt nästa gång)
-#   --glom-val    glöm alla sparade val
-#   -f, --force   uppdatera spellistan även om den redan har veckans lista
-#   -r, --radioordning  samma ordning som i radio, med ettan sist
+#   --digilistan          synka Digilistan (standard)
+#   --svensktoppen        synka Svensktoppen i stället för Digilistan
+#   --alla                synka både Digilistan och Svensktoppen
+#   --dry-run             visa låtar och sökträffar utan att ändra spellistan
+#   -i, --valj            välj själv bland sökträffarna för låtar under 100 %
+#                         matchning (valen sparas och används automatiskt nästa gång)
+#   --glom-val            glöm alla sparade val
+#   -f, --force           uppdatera spellistan även om den redan har veckans lista
+#   -r, --radioordning    samma ordning som i radio, med ettan sist
+#
+# Varje flagga kan stängas av med --no-..., t.ex. --no-radioordning.
+#
+# Inställningar:
+#   --spara               spara flaggorna i kommandot som standard och kör sedan
+#   --visa-installningar  visa sparade inställningar
+#   --rensa-installningar ta bort alla sparade inställningar
 
 set -euo pipefail
 
