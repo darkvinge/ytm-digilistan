@@ -29,6 +29,7 @@ CHARTS = {
 PROFILE_DIR = Path(__file__).with_name("browser-profile")
 CHOICES_FILE = Path(__file__).with_name("val.json")
 SETTINGS_FILE = Path(__file__).with_name("installningar.json")
+HISTORY_FILE = Path(__file__).with_name("tidigare-listor.json")
 # Flaggornas standardvärden när inget är sparat.
 DEFAULTS = {"lista": "digilistan", "dry_run": False, "valj": False, "glom_val": False,
             "force": False, "radioordning": False}
@@ -305,6 +306,71 @@ def save_choices(choices):
                             + "\n", encoding="utf-8")
 
 
+def load_history():
+    """Tidigare listor: {"Digilistan": {"date", "tracks", "previous": {"date", "tracks"}}}."""
+    try:
+        return json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except ValueError:
+        print(f"Kunde inte läsa {HISTORY_FILE.name}, kan inte visa förändringar.")
+        return {}
+
+
+def previous_chart(history, name, date):
+    """Listan att jämföra med: förra veckans, även om den här veckan redan är sparad."""
+    saved = history.get(name)
+    if saved and saved["date"] == date:
+        return saved.get("previous")
+    return saved
+
+
+def remember_chart(history, name, date, tracks):
+    saved = history.get(name)
+    entry = {"date": date, "tracks": tracks}
+    if saved and saved["date"] == date:
+        previous = saved.get("previous")
+    elif saved:
+        previous = {"date": saved["date"], "tracks": saved["tracks"]}
+    else:
+        previous = None
+    if previous:
+        entry["previous"] = previous
+    history[name] = entry
+    HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2) + "\n",
+                            encoding="utf-8")
+
+
+def print_changes(previous, tracks):
+    """Visar nya låtar, klättrare, fallare och låtar som lämnat listan."""
+    if previous is None:
+        print("Ingen tidigare lista sparad, förändringar visas från nästa vecka.")
+        return
+
+    def key(track):
+        return f"{normalize(track[0])} - {normalize(track[1])}"
+
+    was = {key(t): pos for pos, t in enumerate(previous["tracks"], 1)}
+    now = {key(t) for t in tracks}
+    lines = []
+    for pos, (artist, title) in enumerate(tracks, 1):
+        old = was.get(key((artist, title)))
+        if old is None:
+            lines.append(f"    ny {pos:3}. {artist} - {title}")
+        elif old != pos:
+            move = f"↑{old - pos}" if old > pos else f"↓{pos - old}"
+            lines.append(f"  {move:>4} {pos:3}. {artist} - {title}  (var {old})")
+    for artist, title in previous["tracks"]:
+        if key((artist, title)) not in now:
+            lines.append(f"    ut      {artist} - {title}  (var {was[key((artist, title))]})")
+
+    if lines:
+        print(f"Förändringar sedan {previous['date']}:")
+        print("\n".join(lines))
+    else:
+        print(f"Inga förändringar sedan {previous['date']}.")
+
+
 def find_playlist(yt, name):
     """Returnerar (spellistans id, spellistan) eller (None, None) om den inte finns."""
     for p in yt.get_library_playlists(limit=None):
@@ -328,6 +394,11 @@ def sync_chart(yt, chart, args, choices):
     order = ", i radioordning" if args.radioordning else ""
     description = f"{name} {date}{order} (Sveriges Radio)"
     print(f"Sändes {date}: {len(tracks)} låtar")
+
+    history = load_history()
+    print_changes(previous_chart(history, name, date), tracks)
+    if not args.dry_run:
+        remember_chart(history, name, date, tracks)
 
     playlist_id = playlist = None
     same_week = False

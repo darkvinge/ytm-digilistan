@@ -6,6 +6,7 @@ __pycache__/
 browser-profile/
 browser.json
 
-# Dina egna val från -i och sparade inställningar
+# Dina egna val från -i, sparade inställningar och tidigare listor
 val.json
 installningar.json
+tidigare-listor.json

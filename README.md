@@ -59,6 +59,28 @@ Lägg till `--spara` så sparas flaggorna i kommandot som standard. Sedan körs 
 
 Inställningarna sparas i `installningar.json`. Vid varje körning skrivs det ut vilka sparade inställningar som används.
 
+### Förändringar sedan förra veckan
+
+Varje körning visar vad som har ändrats på listan sedan förra veckan:
+
+```
+Förändringar sedan 4 oktober 2026:
+    ↑5   2. Lars Winnerbäck - Hälsningar  (var 7)
+    ↓2   4. Benjamin Ingrosso - Waste My Time  (var 2)
+    ny   9. Molly Hammar - Ängel
+    ut      Laleh - Potatislåten  (var 3)
+```
+
+- **↑ och ↓** visar hur många placeringar en låt har klättrat eller fallit.
+- **ny** betyder att låten är ny på listan.
+- **ut** betyder att låten har lämnat listan.
+
+Låtar som ligger kvar på samma placering visas inte. Jämförelsen gäller placeringarna på listan, så den påverkas inte av `-r` eller av låtar du har hoppat över med `-i`.
+
+Skriptet sparar listorna i `tidigare-listor.json`, så förändringarna visas från andra veckan du kör det. Kör du flera gånger samma vecka jämförs det fortfarande med förra veckan. Provkörningar med `--dry-run` visar förändringarna men sparar ingenting.
+
+För Svensktoppen är jämförelsen bara så bra som detekteringen av bubblare. En vecka där bubblarna inte gick att avgöra innehåller också bubblarna, och då kan de synas som "ut" veckan efter.
+
 ### Svensktoppens bubblare
 
 I Svensktoppen spelas också veckans tre bubblare, som inte är med på listan. Sveriges Radios låtlista skiljer inte på dem, så skriptet letar i avsnittstexten efter meningen om bubblare, till exempel *"Tomas Andersson Wij (Mina Vänner), Greczula (Love=Art) och Chris Kläfford (Ain´t Built For Leaving) är veckans bubblare."*. Hittar skriptet exakt tre låtar vars artist nämns där hoppas de över. Annars tas alla låtar med, eftersom det inte går att avgöra vilka som är bubblare. Avsnittstexten nämner inte alltid bubblarna.
@@ -134,6 +156,7 @@ Flaggan går att kombinera med `--dry-run` om du vill prova utan att ändra spel
 | `browser-profile/` | Skapas vid första körningen och innehåller din inloggning. **Dela den aldrig.** Den finns i `.gitignore`. |
 | `val.json` | Dina sparade val från `-i`. Den finns i `.gitignore`. |
 | `installningar.json` | Dina sparade inställningar från `--spara`. Den finns i `.gitignore`. |
+| `tidigare-listor.json` | Senaste och föregående veckans listor, för att visa förändringar. Den finns i `.gitignore`. |
 
 ## Felsökning
 
