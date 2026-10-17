@@ -2,7 +2,7 @@
 
 Synkar senaste [Digilistan i P3](https://www.sverigesradio.se/listprogramip3) och [Svensktoppen](https://www.sverigesradio.se/poddar/svensktoppen) från Sveriges Radio till spellistorna **Digilistan** och **Svensktoppen** på ditt YouTube Music-konto.
 
-Varje körning ersätter spellistans innehåll med veckans lista, med ettan först. Har spellistan redan den senaste listan händer ingenting, om du inte kör med `-f` (`--force`).
+Varje körning ersätter spellistans innehåll med veckans lista, med ettan först (eller sist, se `-r` nedan). Har spellistan redan den senaste listan händer ingenting, om du inte kör med `-f` (`--force`).
 
 ## Krav
 
@@ -27,6 +27,14 @@ Utan flaggor synkas Digilistan. Välj lista så här:
 ./synka-digilistan.sh --svensktoppen   # bara Svensktoppen
 ./synka-digilistan.sh --alla           # både Digilistan och Svensktoppen
 ```
+
+Vill du lyssna i samma ordning som i radio, med sista placeringen först och ettan sist, kör du med `-r` (`--radioordning`):
+
+```sh
+./synka-digilistan.sh -r
+```
+
+Ordningen gäller tills du kör utan `-r` igen, och då vänds spellistan tillbaka.
 
 Vill du bara se veckans lista och vilka låtar som hittas, utan att ändra något på YouTube Music:
 

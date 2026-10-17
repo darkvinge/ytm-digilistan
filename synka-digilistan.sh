@@ -13,6 +13,7 @@
 #                 (valen sparas och används automatiskt nästa gång)
 #   --glom-val    glöm alla sparade val
 #   -f, --force   uppdatera spellistan även om den redan har veckans lista
+#   -r, --radioordning  samma ordning som i radio, med ettan sist
 
 set -euo pipefail
 

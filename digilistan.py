@@ -320,7 +320,9 @@ def sync_chart(yt, chart, args, choices):
     if fetched is None:
         return
     date, tracks = fetched
-    description = f"{name} {date} (Sveriges Radio)"
+    # Ordningen står i beskrivningen, så att byte av ordning räknas som en ändring.
+    order = ", i radioordning" if args.radioordning else ""
+    description = f"{name} {date}{order} (Sveriges Radio)"
     print(f"Sändes {date}: {len(tracks)} låtar")
 
     playlist_id = playlist = None
@@ -398,6 +400,10 @@ def sync_chart(yt, chart, args, choices):
         print("Inga låtar hittades på YouTube Music, spellistan lämnas orörd.")
         return
 
+    if args.radioordning:
+        # Som i sändningen: sista placeringen först och ettan sist.
+        video_ids.reverse()
+
     if same_week and [t.get("videoId") for t in playlist["tracks"]] == video_ids:
         print(f"Spellistan '{name}' har redan de här låtarna, inget att göra.")
         return
@@ -430,6 +436,8 @@ def main():
                         help="glöm alla sparade val från -i")
     parser.add_argument("-f", "--force", action="store_true",
                         help="uppdatera spellistan även om den redan har veckans lista")
+    parser.add_argument("-r", "--radioordning", action="store_true",
+                        help="lägg låtarna i samma ordning som i radio, med ettan sist")
     args = parser.parse_args()
     if args.valj and not sys.stdin.isatty():
         sys.exit("--valj kräver en terminal att svara i.")
